@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<library>
+  <component name="三输入自定义门" prefix="U" description="仅演示引脚与外形定义；无内置仿真模型" inputs="3" outputs="1" w="80" h="60"/>
+</library>
