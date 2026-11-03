@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schematic version="1.1" format="circuit-schematic" generator="SchematicEditor 1.0">
+  <view gridStep="10" gridVisible="1" snapEnabled="1" zoom="1.0000"/>
+  <components count="3">
+    <component id="1" name="时钟" refdes="CLK1" value="" footprint="Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical" model="" truth="" delay="1" clockPeriod="4" x="10" y="-10" w="46" h="40">
+      <pin name="OUT" number="" dir="output" side="left" slot="0" count="1"/>
+    </component>
+    <component id="2" name="输入引脚" refdes="IN2" value="1" footprint="Connector_PinHeader_2.54mm:PinHeader_1x01_P2.54mm_Vertical" model="" truth="" delay="1" clockPeriod="10" x="10" y="10" w="46" h="40">
+      <pin name="OUT" number="" dir="output" side="left" slot="0" count="1"/>
+    </component>
+    <component id="3" name="与门" refdes="U3" value="" footprint="Connector_PinHeader_2.54mm:PinHeader_1x03_P2.54mm_Vertical" model="" truth="" delay="1" clockPeriod="10" x="200" y="0" w="60" h="40">
+      <pin name="A" number="" dir="input" side="left" slot="0" count="2"/>
+      <pin name="B" number="" dir="input" side="left" slot="1" count="2"/>
+      <pin name="Y" number="" dir="output" side="right" slot="0" count="1"/>
+    </component>
+  </components>
+  <wires count="2">
+    <wire id="1" x1="0" y1="10" x2="190" y2="10"/>
+    <wire id="2" x1="0" y1="30" x2="190" y2="30"/>
+  </wires>
+</schematic>

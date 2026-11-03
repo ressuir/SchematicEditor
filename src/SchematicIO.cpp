@@ -141,7 +141,7 @@ bool SchematicIO::Save(const wxString& path, const SchematicDocument& doc, wxStr
     xml.SetFileEncoding(L"UTF-8");
 
     wxXmlNode* root = new wxXmlNode(nullptr, wxXML_ELEMENT_NODE, L"schematic");
-    root->AddAttribute(L"version", L"1.0");
+    root->AddAttribute(L"version", L"1.1");
     root->AddAttribute(L"format", L"circuit-schematic");
     root->AddAttribute(L"generator", L"SchematicEditor 1.0");
 
@@ -165,6 +165,8 @@ bool SchematicIO::Save(const wxString& path, const SchematicDocument& doc, wxStr
         node->AddAttribute(L"refdes", comp.refdes);
         node->AddAttribute(L"value", comp.value);
         node->AddAttribute(L"footprint", comp.footprint);
+        node->AddAttribute("model",comp.logicModel);node->AddAttribute("truth",comp.truthTable);
+        AddIntAttr(node,"delay",comp.delayTicks);AddIntAttr(node,"clockPeriod",comp.clockPeriodTicks);
         AddIntAttr(node, "x", comp.pos.x);
         AddIntAttr(node, "y", comp.pos.y);
         AddIntAttr(node, "w", comp.w);
@@ -175,6 +177,7 @@ bool SchematicIO::Save(const wxString& path, const SchematicDocument& doc, wxStr
         {
             wxXmlNode* pinNode = new wxXmlNode(nullptr, wxXML_ELEMENT_NODE, L"pin");
             pinNode->AddAttribute(L"name", pin.name);
+            pinNode->AddAttribute("number",pin.number);
             pinNode->AddAttribute(L"dir", DirToStr(pin.dir));
             pinNode->AddAttribute(L"side", SideToStr(pin.side));
             AddIntAttr(pinNode, "slot", pin.slot);
@@ -255,12 +258,12 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
         return false;
     }
 
-    if (root->GetAttribute("version", "1.0") != "1.0") {
+    if (root->GetAttribute("version", "1.0") != "1.0" && root->GetAttribute("version", "1.0") != "1.1") {
         SetError(error, L"不支持的文件版本"); return false;
     }
     // Validate numeric lexical forms before GetIntAttr can apply missing-field defaults.
     std::function<bool(const wxXmlNode*)> numericValid = [&](const wxXmlNode* node) {
-        static const std::set<wxString> integers={"id","x","y","w","h","slot","count","gridStep","x1","y1","x2","y2"};
+        static const std::set<wxString> integers={"id","x","y","w","h","slot","count","gridStep","x1","y1","x2","y2","delay","clockPeriod"};
         for(auto* attr=node->GetAttributes();attr;attr=attr->GetNext()) {
             if(integers.count(attr->GetName())) {
                 long value=0;
@@ -308,6 +311,8 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
                 comp.refdes = GetStrAttr(node, "refdes");
                 comp.value = GetStrAttr(node, "value");
                 comp.footprint = GetStrAttr(node, "footprint");
+                comp.logicModel=GetStrAttr(node,"model");comp.truthTable=GetStrAttr(node,"truth");
+                comp.delayTicks=GetIntAttr(node,"delay",1);comp.clockPeriodTicks=GetIntAttr(node,"clockPeriod",10);
                 comp.pos    = wxPoint(GetIntAttr(node, "x", 0), GetIntAttr(node, "y", 0));
                 comp.w      = GetIntAttr(node, "w", 60);
                 comp.h      = GetIntAttr(node, "h", 40);
@@ -319,6 +324,10 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
 
                     Pin pin;
                     pin.name  = GetStrAttr(pinNode, "name");
+                    pin.number = GetStrAttr(pinNode,"number");
+                    const auto direction=GetStrAttr(pinNode,"dir","input"),side=GetStrAttr(pinNode,"side","left");
+                    if((direction!="input"&&direction!="output"&&direction!="passive"&&direction!="bidir") ||
+                       (side!="left"&&side!="right"&&side!="top"&&side!="bottom")){SetError(error,L"未知引脚方向或边" );return false;}
                     pin.dir   = StrToDir(GetStrAttr(pinNode, "dir", L"input"));
                     pin.side  = StrToSide(GetStrAttr(pinNode, "side", L"left"));
                     pin.slot  = GetIntAttr(pinNode, "slot", 0);
@@ -360,7 +369,7 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
     }
     std::set<int> componentIds, wireIds;
     for (const auto& c : loaded.components) {
-        if (c.id<=0 || !componentIds.insert(c.id).second || c.name.empty() || c.refdes.empty() || c.w<0 || c.h<0 || c.w>10000 || c.h>10000 ||
+        if (c.id<=0 || !componentIds.insert(c.id).second || c.name.empty() || c.refdes.empty() || c.w<0 || c.h<0 || c.w>10000 || c.h>10000 || c.delayTicks<1 || c.delayTicks>1000 || c.clockPeriodTicks<2 || c.clockPeriodTicks>10000 || c.clockPeriodTicks%2 ||
             std::abs((long long)c.pos.x)>10000000 || std::abs((long long)c.pos.y)>10000000) {
             SetError(error,L"元件 ID、名称、位号或几何尺寸非法");return false;
         }
@@ -368,7 +377,7 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
             SetError(error,L"引脚定义非法");return false;
         }
     }
-    for(const auto& w:loaded.wires) if(w.id<=0 || !wireIds.insert(w.id).second || w.a==w.b ||
+    for(const auto& w:loaded.wires) if(w.id<=0 || !wireIds.insert(w.id).second || w.a==w.b || !w.IsAxisAligned() ||
         std::abs((long long)w.a.x)>10000000 || std::abs((long long)w.a.y)>10000000 ||
         std::abs((long long)w.b.x)>10000000 || std::abs((long long)w.b.y)>10000000) {
         SetError(error,L"导线 ID 或坐标非法");return false;

@@ -65,6 +65,7 @@ struct Pin
     Side     side  = Side::Left;
     int      slot  = 0;            // 同侧第几个（从 0 开始）
     int      count = 1;            // 同侧共几个（用于均匀分布）
+    wxString number;               // physical PCB pad number; empty => pin index + 1
 };
 
 // ------------------------------------------------------------
@@ -77,6 +78,10 @@ struct ComponentInstance
     wxString         refdes;       // 位号，例如 "U1"
     wxString         value;        // parameter / digital input / label text
     wxString         footprint;    // user-assigned package name
+    wxString         logicModel;
+    wxString         truthTable;
+    int              delayTicks = 1;
+    int              clockPeriodTicks = 10;
     wxPoint          pos;          // 元件框左上角（世界坐标）
     int              w      = 60;
     int              h      = 40;

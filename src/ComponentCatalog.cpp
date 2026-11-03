@@ -2,6 +2,7 @@
 #include <wx/xml/xml.h>
 #include <set>
 #include <algorithm>
+#include "DigitalSimulator.h"
 
 namespace se
 {
@@ -132,6 +133,17 @@ bool ComponentCatalog::LoadCustomXml(const wxString& path, wxString& error) {
         if(!valid || c.name.empty() || c.refPrefix.empty() || names.count(c.name) || ni<0 || no<0 || ni+no<1 || ni+no>64 || w<20 || h<20 || w>1000 || h>1000) {error=L"名称重复或元件参数非法，整个库未导入";return false;}
         for(auto ch:c.refPrefix)if(ch<'A'||ch>'Z'){error=L"位号前缀应为大写英文字母";return false;}
         c.inputs=(int)ni;c.outputs=(int)no;c.w=(int)w;c.h=(int)h;c.kind=ComponentKind::Logic;
+        c.logicModel=node->GetAttribute("model");c.truthTable=node->GetAttribute("truth");
+        long delay=1;
+        if(!node->GetAttribute("delay","1").ToLong(&delay)||delay<1||delay>1000){error=L"传播延迟必须为1至1000步";return false;}
+        c.delayTicks=(int)delay;
+        if(!c.logicModel.empty()) {
+            ComponentInstance probe;probe.id=1;probe.name=c.name;probe.logicModel=c.logicModel;probe.truthTable=c.truthTable;
+            probe.delayTicks=c.delayTicks;probe.pins=MakePins(c.name,c.kind,c.inputs,c.outputs);
+            auto graph=NetBuilder::Build({probe},{});DigitalSimulator sim;
+            if(!sim.Reset({probe},graph,error))return false;
+        }
+
         names.insert(c.name);pending.push_back(c);
     }
     if(pending.empty()){error=L"库中没有有效的元件";return false;}

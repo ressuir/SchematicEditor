@@ -34,6 +34,9 @@ struct ComponentDef
     ComponentKind kind    = ComponentKind::Logic;  // 电气形态（决定引脚摆法）
     int           w       = 60;  // 元件框宽（世界坐标）
     int           h       = 40;  // 元件框高
+    wxString      logicModel;
+    wxString      truthTable;
+    int           delayTicks = 1;
 };
 
 // ------------------------------------------------------------
