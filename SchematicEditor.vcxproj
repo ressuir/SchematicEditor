@@ -17,8 +17,7 @@
     <ProjectGuid>{8A3F2C41-5B7E-4D9A-9C1E-2F6B0D4A7E31}</ProjectGuid>
     <RootNamespace>SchematicEditor</RootNamespace>
     <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
-    <!-- wxWidgets 根目录：优先使用环境变量 WXWIN，未设置时回退到本机安装路径 -->
-    <WXWIN Condition="'$(WXWIN)'==''">D:\Test\wxWidgets-3.2.11</WXWIN>
+    <!-- Configure WXWIN in the build environment; do not embed a local installation path. -->
     <!-- 本机 wxWidgets 为 x64 / 静态库(static) / Unicode 构建 -->
     <WxLibDir>$(WXWIN)\lib\vc_x64_lib</WxLibDir>
     <WxIncludeDir>$(WXWIN)\include</WxIncludeDir>

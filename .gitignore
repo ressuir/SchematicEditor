@@ -6,3 +6,14 @@ build*/
 /verification/
 BUILD_INFO.json
 SOURCE_MANIFEST.sha256
+/ci-artifacts/
+/dist/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.pem
+*.key

@@ -1,0 +1,104 @@
+name: Build and verify
+
+'on':
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-gui-kicad:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Install build and virtual desktop dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential cmake libwxgtk3.2-dev python3 xvfb xauth xdotool openbox dbus-x11 scrot fonts-noto-cjk
+      - name: Scan complete Git history
+        run: python3 tools/check_public_history.py --output ci-artifacts/history-scan.json
+      - name: Configure and compile Release
+        id: build
+        run: |
+          mkdir -p ci-artifacts
+          cmake -S . -B build-release -DCMAKE_BUILD_TYPE=Release 2>&1 | tee ci-artifacts/release-configure.log
+          cmake --build build-release -j4 2>&1 | tee ci-artifacts/release-build.log
+          ./build-release/schematic-cli --version | tee ci-artifacts/version.log
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+      - name: Run all non-GUI regression suites
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        run: |
+          ctest --test-dir build-release -LE gui -V --output-junit "$PWD/ci-artifacts/core-junit.xml" 2>&1 | tee ci-artifacts/core-tests.log
+          python3 tools/assert_junit.py ci-artifacts/core-junit.xml model_tests dynamic_tests editing_tests simulation_scenarios_tests regression_tests cli_integration
+      - name: Real wxWidgets native-input and widget tests in Xvfb
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        env:
+          LC_ALL: C.UTF-8
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: xvfb-run -a -s '-screen 0 1600x1000x24 -nolisten tcp' dbus-run-session -- bash tools/run_gui_ci.sh
+      - name: Install KiCad and actual footprint libraries
+        id: kicad-deps
+        if: ${{ always() && steps.build.outcome == 'success' }}
+        run: |
+          sudo apt-get install --no-install-recommends -y kicad kicad-footprints python3-wxgtk4.0 python3-pyatspi at-spi2-core libatk-adaptor
+          dpkg-query -W kicad kicad-footprints | tee ci-artifacts/kicad-packages.log
+      - name: Import exported netlist in real KiCad PCB Editor
+        if: ${{ always() && steps.build.outcome == 'success' && steps.kicad-deps.outcome == 'success' }}
+        env:
+          LC_ALL: C.UTF-8
+          LANG: C.UTF-8
+          NO_AT_BRIDGE: '0'
+          GTK_MODULES: gail:atk-bridge
+          LIBGL_ALWAYS_SOFTWARE: '1'
+        run: xvfb-run -a -s '-screen 0 1600x1000x24 -nolisten tcp' dbus-run-session -- bash tools/run_kicad_ci.sh
+      - name: Collect binaries, source and evidence metadata
+        if: always()
+        run: python3 tools/collect_ci_artifacts.py
+      - name: Upload build products and actual test evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: release-gui-kicad-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            ci-artifacts/
+            dist/
+          if-no-files-found: error
+          retention-days: 30
+
+  sanitizer:
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      ASAN_OPTIONS: detect_leaks=0
+      UBSAN_OPTIONS: halt_on_error=1:print_stacktrace=1
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - name: Install compiler and wxWidgets
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y build-essential cmake libwxgtk3.2-dev python3
+      - name: Configure, build and run applicable sanitizer suites
+        run: |
+          mkdir -p ci-artifacts
+          cmake -S . -B build-sanitize -DCMAKE_BUILD_TYPE=Debug '-DCMAKE_CXX_FLAGS=-fsanitize=address,undefined -fno-omit-frame-pointer' '-DCMAKE_EXE_LINKER_FLAGS=-fsanitize=address,undefined' 2>&1 | tee ci-artifacts/sanitizer-configure.log
+          cmake --build build-sanitize -j2 --target model_tests dynamic_tests editing_tests simulation_scenarios_tests regression_tests schematic-cli 2>&1 | tee ci-artifacts/sanitizer-build.log
+          ctest --test-dir build-sanitize -LE gui -V --output-junit "$PWD/ci-artifacts/sanitizer-junit.xml" 2>&1 | tee ci-artifacts/sanitizer-tests.log
+          python3 tools/assert_junit.py ci-artifacts/sanitizer-junit.xml model_tests dynamic_tests editing_tests simulation_scenarios_tests regression_tests cli_integration
+      - name: Upload sanitizer evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: sanitizer-${{ github.sha }}-${{ github.run_attempt }}
+          path: ci-artifacts/
+          if-no-files-found: error
+          retention-days: 30
