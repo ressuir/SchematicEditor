@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <library>
-  <component name="三输入自定义门" prefix="U" description="仅演示引脚与外形定义；无内置仿真模型" inputs="3" outputs="1" w="80" h="60"/>
+  <component name="CUSTOM_AND3" prefix="U" description="3-input AND; rows indexed by A+2B+4C" inputs="3" outputs="1" model="truth" truth="00000001" delay="2" w="80" h="60"/>
+  <component name="CUSTOM_XOR" prefix="U" description="2-input XOR" inputs="2" outputs="1" model="truth" truth="0110" delay="1" w="80" h="50"/>
+  <component name="CUSTOM_BUFFER" prefix="U" description="Digital buffer" inputs="1" outputs="1" model="buffer" delay="1" w="60" h="40"/>
 </library>

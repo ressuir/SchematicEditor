@@ -369,7 +369,7 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
     }
     std::set<int> componentIds, wireIds;
     for (const auto& c : loaded.components) {
-        if (c.id<=0 || !componentIds.insert(c.id).second || c.name.empty() || c.refdes.empty() || c.w<0 || c.h<0 || c.w>10000 || c.h>10000 || c.delayTicks<1 || c.delayTicks>1000 || c.clockPeriodTicks<2 || c.clockPeriodTicks>10000 || c.clockPeriodTicks%2 ||
+        if (c.id<=0 || c.id>1000000000 || !componentIds.insert(c.id).second || c.name.empty() || c.refdes.empty() || c.w<0 || c.h<0 || c.w>10000 || c.h>10000 || c.delayTicks<1 || c.delayTicks>1000 || c.clockPeriodTicks<2 || c.clockPeriodTicks>10000 || c.clockPeriodTicks%2 ||
             std::abs((long long)c.pos.x)>10000000 || std::abs((long long)c.pos.y)>10000000) {
             SetError(error,L"元件 ID、名称、位号或几何尺寸非法");return false;
         }
@@ -377,7 +377,7 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
             SetError(error,L"引脚定义非法");return false;
         }
     }
-    for(const auto& w:loaded.wires) if(w.id<=0 || !wireIds.insert(w.id).second || w.a==w.b || !w.IsAxisAligned() ||
+    for(const auto& w:loaded.wires) if(w.id<=0 || w.id>1000000000 || !wireIds.insert(w.id).second || w.a==w.b || !w.IsAxisAligned() ||
         std::abs((long long)w.a.x)>10000000 || std::abs((long long)w.a.y)>10000000 ||
         std::abs((long long)w.b.x)>10000000 || std::abs((long long)w.b.y)>10000000) {
         SetError(error,L"导线 ID 或坐标非法");return false;

@@ -1,3 +1,6 @@
+#ifndef SE_SOURCE_REV
+#define SE_SOURCE_REV "unversioned"
+#endif
 #include "KiCadExport.h"
 #include "MainFrame.h"
 #include "CircuitTools.h"
@@ -1097,7 +1100,7 @@ void MainFrame::OnCommand(wxCommandEvent& event)
         {
             wxAboutDialogInfo info;
             info.SetName(L"Schematic Editor");
-            info.SetVersion(L"1.0");
+            info.SetVersion(wxString::FromUTF8("2.0 source " SE_SOURCE_REV));
             info.SetDescription(L"电路原理图编辑器\n基于 C++ 与 wxWidgets");
             info.SetCopyright(L"工业软件创新训练 I · 综合设计");
             wxAboutBox(info, this);

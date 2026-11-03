@@ -125,6 +125,10 @@
 
   <ItemGroup>
     <ClCompile Include="src\minimal.cpp" />
+    <ClCompile Include="src\DigitalSimulator.cpp" />
+    <ClCompile Include="src\KiCadExport.cpp" />
+    <ClCompile Include="src\EditingTools.cpp" />
+
     <ClCompile Include="src\MainFrame.cpp" />
     <ClCompile Include="src\SchematicCanvas.cpp" />
     <ClCompile Include="src\LibraryPanel.cpp" />
@@ -139,6 +143,10 @@
     <ClInclude Include="src\Ids.h" />
     <ClInclude Include="src\ComponentCatalog.h" />
     <ClInclude Include="src\NetModel.h" />
+    <ClInclude Include="src\DigitalSimulator.h" />
+    <ClInclude Include="src\KiCadExport.h" />
+    <ClInclude Include="src\EditingTools.h" />
+
     <ClInclude Include="src\CircuitTools.h" />
     <ClInclude Include="src\SchematicIO.h" />
     <ClInclude Include="src\SchematicCanvas.h" />

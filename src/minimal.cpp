@@ -15,6 +15,7 @@
 
 #include <wx/wx.h>
 #include <wx/image.h>
+#include <wx/cmdline.h>
 
 #include "MainFrame.h"
 
@@ -24,6 +25,16 @@
 class SchematicApp : public wxApp
 {
 public:
+    wxString initialPath;
+    void OnInitCmdLine(wxCmdLineParser& parser) override {
+        wxApp::OnInitCmdLine(parser);
+        parser.AddParam("design.ses",wxCMD_LINE_VAL_STRING,wxCMD_LINE_PARAM_OPTIONAL);
+    }
+    bool OnCmdLineParsed(wxCmdLineParser& parser) override {
+        if(!wxApp::OnCmdLineParsed(parser))return false;
+        if(parser.GetParamCount())initialPath=parser.GetParam(0);
+        return true;
+    }
     bool OnInit() override
     {
         if (!wxApp::OnInit())
@@ -35,6 +46,7 @@ public:
         se::MainFrame* frame = new se::MainFrame();
 
         frame->Show(true);
+        if(!initialPath.empty())frame->OpenDocument(initialPath);
 
         return true;
     }

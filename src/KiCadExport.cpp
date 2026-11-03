@@ -3,7 +3,7 @@
 namespace se {
 namespace {
 wxString Quoted(const wxString& raw){wxString s=raw;s.Replace("\\","\\\\");s.Replace("\"","\\\"");s.Replace("\n","\\n");s.Replace("\r","\\r");s.Replace("\t","\\t");return "\""+s+"\"";}
-bool Identifier(const wxString& s){if(s.empty())return false;for(auto c:s)if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'))return false;return s[0]>='A'&&s[0]<='Z'||s[0]>='a'&&s[0]<='z';}
+bool Identifier(const wxString& s){if(s.empty())return false;for(auto c:s)if(!((c>='A'&&c<='Z')||(c>='a'&&c<='z')||(c>='0'&&c<='9')||c=='_'))return false;return (s[0]>='A'&&s[0]<='Z')||(s[0]>='a'&&s[0]<='z');}
 }
 wxString PcbPinNumber(const ComponentInstance& c,size_t pin){return c.pins[pin].number.empty()?wxString::Format("%zu",pin+1):c.pins[pin].number;}
 wxString DefaultFootprint(size_t n){if(n<1||n>40)return {};return wxString::Format("Connector_PinHeader_2.54mm:PinHeader_1x%02zu_P2.54mm_Vertical",n);}

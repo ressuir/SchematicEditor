@@ -130,7 +130,7 @@ bool ComponentCatalog::LoadCustomXml(const wxString& path, wxString& error) {
         c.description=node->GetAttribute("description",L"用户自定义元件");
         long ni=0,no=1,w=60,h=40;
         bool valid=node->GetAttribute("inputs","0").ToLong(&ni)&&node->GetAttribute("outputs","1").ToLong(&no)&&node->GetAttribute("w","60").ToLong(&w)&&node->GetAttribute("h","40").ToLong(&h);
-        if(!valid || c.name.empty() || c.refPrefix.empty() || names.count(c.name) || ni<0 || no<0 || ni+no<1 || ni+no>64 || w<20 || h<20 || w>1000 || h>1000) {error=L"名称重复或元件参数非法，整个库未导入";return false;}
+        if(!valid || c.name.empty() || c.refPrefix.empty() || names.count(c.name) || ni<0 || no<0 || ni>64 || no>64 || ni+no<1 || ni+no>64 || w<20 || h<20 || w>1000 || h>1000) {error=L"名称重复或元件参数非法，整个库未导入";return false;}
         for(auto ch:c.refPrefix)if(ch<'A'||ch>'Z'){error=L"位号前缀应为大写英文字母";return false;}
         c.inputs=(int)ni;c.outputs=(int)no;c.w=(int)w;c.h=(int)h;c.kind=ComponentKind::Logic;
         c.logicModel=node->GetAttribute("model");c.truthTable=node->GetAttribute("truth");

@@ -46,5 +46,12 @@ int main(int argc,char**argv){
  check(sim.Reset(doc.components,g,error),"geometry-derived network starts dynamic engine");sim.Advance(2);check(sim.Value(out)==0,"geometry circuit initial output");sim.SetInput(1,1);sim.SetInput(2,1);check(sim.Value(out)==0,"geometry circuit retains pre-delay output");sim.Advance();check(sim.Value(out)==1,"geometry circuit input changes reach output after delay");
  if(argc>1){wxString dir=wxString::FromUTF8(argv[1]);check(SchematicIO::Save(dir+"/dynamic-and.ses",doc,&error),"write runnable dynamic example");check(BuildKiCadNetlist(doc.components,g,text,error)&&SchematicIO::WriteTextFile(dir+"/dynamic-and.net",text,&error),"write actual KiCad-format export fixture");
   doc.components[0]=clock;doc.components[0].pos=x.pos;doc.components[0].h=40;doc.wires[0].a=PinPosition(doc.components[0],0);doc.components[1].value="1";check(SchematicIO::Save(dir+"/clock-and.ses",doc,&error),"write live clock example");}
+ if(argc>2){
+  check(ComponentCatalog::LoadCustomXml(wxString::FromUTF8(argv[2]),error),"actual user library XML imports digital models");
+  const auto* def=ComponentCatalog::Find("CUSTOM_XOR");check(def&&def->logicModel=="truth"&&def->truthTable=="0110","imported definition contains an executable model");
+  auto instance=make(L"与门",9);instance.name=def->name;instance.logicModel=def->logicModel;instance.truthTable=def->truthTable;instance.delayTicks=def->delayTicks;
+  SchematicDocument customDoc;customDoc.components={instance};const auto file=wxFileName::CreateTempFileName("se-custom-");check(SchematicIO::Save(file,customDoc,&error)&&SchematicIO::Load(file,customDoc,&error),"custom library instance saves and reloads self-contained");wxRemoveFile(file);
+  check(EvaluateDigital(customDoc.components[0],{0,1})==std::vector<int>{1},"reopened custom component evaluates independently of library UI");
+ }
  std::cout<<"PASS "<<checks<<" dynamic/persistence/export checks\n";
 }

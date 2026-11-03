@@ -47,8 +47,10 @@ std::vector<int> EvaluateDigital(const ComponentInstance& c,const std::vector<in
 bool DigitalSimulator::Reset(const std::vector<ComponentInstance>& cs,const NetGraph& graph,wxString& error){
     *this=DigitalSimulator();m_components=cs;m_graph=graph;m_values.assign(graph.nets.size(),-1);
     if(graph.pinNet.size()!=cs.size()){error=L"网络映射与元件数量不一致";return false;}
+    std::set<int> ids;
     for(size_t i=0;i<cs.size();++i){
         const auto& c=cs[i];const auto model=DigitalModel(c);
+        if(c.id<=0||!ids.insert(c.id).second){error=L"元件ID必须为唯一正整数";return false;}
         if(model.empty()){error=L"没有数字模型："+c.refdes+" "+c.name;return false;}
         if(graph.pinNet[i].size()!=c.pins.size()){error=L"引脚网络映射不完整";return false;}
         for(int net:graph.pinNet[i])if(net<0||net>=static_cast<int>(graph.nets.size())){error=L"非法引脚网络下标";return false;}

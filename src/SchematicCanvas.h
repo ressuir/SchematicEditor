@@ -294,20 +294,11 @@ private:
     // ---- 拖动移动 ------------------------------------------
     //  除了移动元件本身，接在它引脚上的导线端点也要跟着走（橡皮筋连线），
     //  否则一拖动网络就断了。
-    struct DragWireEnd
-    {
-        int     wireIndex = -1;
-        int     end       = 0;      // 0 = a 端，1 = b 端
-        wxPoint original;
-    };
-
     bool                 m_dragging   = false;
     bool                 m_dragMoved  = false;
     wxPoint              m_dragStartWorld;
     std::vector<ComponentInstance> m_dragBaseComponents;
     std::vector<Wire> m_dragBaseWires;
-    std::vector<wxPoint>     m_dragOriginalPos;   // 与 m_selComponents 平行
-    std::vector<DragWireEnd> m_dragWireEnds;
 
     // ---- 框选（橡皮筋）-------------------------------------
     bool    m_bandSelecting = false;

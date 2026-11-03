@@ -2,3 +2,7 @@ build*/
 .vs/
 *.user
 *.aps
+/bin/
+/verification/
+BUILD_INFO.json
+SOURCE_MANIFEST.sha256
