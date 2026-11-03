@@ -125,7 +125,9 @@ enum
 enum
 {
     ID_FILE_RECENT_BASE = ID_FILE_EXPORT_PNG + 1,
-    ID_FILE_RECENT_MAX  = 8
+    ID_FILE_RECENT_MAX  = 8,
+    ID_SIM_STEP = ID_FILE_RECENT_BASE + ID_FILE_RECENT_MAX + 1,
+    ID_SIM_TOGGLE_INPUT
 };
 
 } // namespace se

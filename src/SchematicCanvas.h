@@ -32,6 +32,8 @@
 
 #include "ComponentCatalog.h"
 #include "NetModel.h"
+#include "DigitalSimulator.h"
+#include <wx/timer.h>
 
 namespace se
 {
@@ -50,6 +52,15 @@ public:
     };
 
     explicit SchematicCanvas(wxWindow* parent);
+    bool StartSimulation(wxString& error);
+    bool StepSimulation(wxString& error);
+    void StopSimulation();
+    bool ToggleSimulationInput();
+    bool SimulationActive() const { return m_simActive; }
+    int SimulationValue(int net) const { return m_simulator.Value(net); }
+    std::uint64_t SimulationTime() const {return m_simulator.Time();}
+    wxPoint ScreenPoint(const wxPoint& world) const { auto p=ToScreen(wxPoint2DDouble(world.x,world.y));return wxPoint((int)p.m_x,(int)p.m_y); }
+
 
     // ---- 元件库联动 ----------------------------------------
     void                SetPendingComponent(const ComponentDef* def);
@@ -215,7 +226,7 @@ private:
     void BeginBandSelect(const wxPoint& world);
     void UpdateBandSelect(const wxPoint& world);
     void EndBandSelect();
-    void Touch() { m_modified = true; }
+    void Touch() { StopSimulation(); m_modified = true; }
 
     // 撤销
     void PushUndo(const wxString& label);
@@ -244,6 +255,12 @@ private:
 
     // ---- 文档修改状态 --------------------------------------
     bool m_modified = false;
+    wxTimer m_simTimer;
+    DigitalSimulator m_simulator;
+    bool m_simActive = false;
+    void OnSimTimer(wxTimerEvent& event);
+    void SimulationChanged();
+
 
     // ---- 视图状态 ------------------------------------------
     double          m_zoom   = 1.0;
@@ -287,6 +304,8 @@ private:
     bool                 m_dragging   = false;
     bool                 m_dragMoved  = false;
     wxPoint              m_dragStartWorld;
+    std::vector<ComponentInstance> m_dragBaseComponents;
+    std::vector<Wire> m_dragBaseWires;
     std::vector<wxPoint>     m_dragOriginalPos;   // 与 m_selComponents 平行
     std::vector<DragWireEnd> m_dragWireEnds;
 

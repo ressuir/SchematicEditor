@@ -1,5 +1,7 @@
+#include "EditingTools.h"
 #include "SchematicCanvas.h"
 #include "CircuitTools.h"
+#include "KiCadExport.h"
 
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
@@ -54,6 +56,9 @@ SchematicCanvas::SchematicCanvas(wxWindow* parent)
                wxDefaultSize,
                wxFULL_REPAINT_ON_RESIZE | wxWANTS_CHARS)
 {
+    SetName("schematic-canvas");
+    m_simTimer.SetOwner(this);
+    Bind(wxEVT_TIMER,&SchematicCanvas::OnSimTimer,this,m_simTimer.GetId());
     SetBackgroundStyle(wxBG_STYLE_PAINT);
     SetBackgroundColour(wxColour(250, 250, 252));
     SetCursor(wxCursor(wxCURSOR_CROSS));
@@ -498,6 +503,10 @@ void SchematicCanvas::OnPaint(wxPaintEvent&)
     DrawGhost(gc.get());
     DrawWirePreview(gc.get());
     DrawCrosshair(gc.get());
+    if(m_simActive){
+        gc->SetFont(wxFont(wxFontInfo(10)),wxColour(20,60,100));
+        gc->DrawText(wxString::Format(L"数字仿真  t=%llu步（100ms/步）   0=蓝  1=绿  X=灰  ERR=红   双击输入或按空格切换",(unsigned long long)m_simulator.Time()),8,8);
+    }
 }
 
 // ------------------------------------------------------------
@@ -644,6 +653,7 @@ void SchematicCanvas::DrawWires(wxGraphicsContext* gc)
         const bool inNet    = (m_highlightNet >= 0 && m_graph.NetOfWire(static_cast<int>(i)) == m_highlightNet);
 
         wxColour colour = kWireColour;
+        if(m_simActive){int v=m_simulator.Value(m_graph.NetOfWire((int)i));colour=v==0?wxColour(45,90,210):v==1?wxColour(0,155,70):v==2?wxColour(215,30,30):wxColour(140,140,140);}
         double   width  = std::max(1.0, 2.0 * m_zoom);
 
         if (inNet)
@@ -737,6 +747,7 @@ void SchematicCanvas::DrawComponents(wxGraphicsContext* gc)
                                    : -1;
 
             const bool pinHot = (m_highlightNet >= 0 && netIdx == m_highlightNet);
+            if(m_simActive){int v=m_simulator.Value(netIdx);gc->SetFont(smallFont,v==1?wxColour(0,135,50):v==2?wxColour(200,0,0):wxColour(35,75,160));gc->DrawText(LogicValueText(v),outer.m_x+4,outer.m_y-14);}
 
             gc->SetPen(wxPen(pinHot ? kWireHotColour : wxColour(90, 100, 120),
                              std::max(1.0, (pinHot ? 2.4 : 1.5) * m_zoom)));
@@ -1097,6 +1108,7 @@ void SchematicCanvas::OnRightDown(wxMouseEvent&)
 
 void SchematicCanvas::OnLeftDClick(wxMouseEvent&)
 {
+    if(m_simActive && ToggleSimulationInput())return;
     if (m_wireDrawing)
         FinishWire();
 }
@@ -1146,6 +1158,7 @@ void SchematicCanvas::OnKeyDown(wxKeyEvent& event)
     }
     switch (event.GetKeyCode())
     {
+        case WXK_SPACE: if(m_simActive){ToggleSimulationInput();return;}break;
         case WXK_DELETE:
             DeleteSelection();
             return;
@@ -1239,6 +1252,7 @@ void SchematicCanvas::PushUndo(const wxString& label)
 
 void SchematicCanvas::ApplySnapshot(const Snapshot& snapshot)
 {
+    StopSimulation();
     m_components    = snapshot.components;
     m_wires         = snapshot.wires;
     m_nextComponentId = snapshot.nextComponentId;
@@ -1342,6 +1356,8 @@ void SchematicCanvas::PlaceComponent(const wxPoint& world)
     comp.h    = m_pending->h;
     comp.pins = MakePins(m_pending->name, m_pending->kind,
                          m_pending->inputs, m_pending->outputs);
+    comp.logicModel=m_pending->logicModel;comp.truthTable=m_pending->truthTable;comp.delayTicks=m_pending->delayTicks;
+    comp.footprint=DefaultFootprint(comp.pins.size());
 
     // 以光标为中心；中心与左上角都对齐到网格，
     // 这样引脚（PinAnchor 内部也对齐到 10）一定落在网格上，画线不会产生小折角
@@ -1375,146 +1391,28 @@ void SchematicCanvas::PlaceComponent(const wxPoint& world)
 // ------------------------------------------------------------
 void SchematicCanvas::BeginDrag(const wxPoint& world)
 {
-    if (m_selComponents.empty())
-        return;
-
-    m_dragging       = true;
-    m_dragMoved      = false;
-    m_dragStartWorld = world;
-    m_dragOriginalPos.clear();
-    m_dragWireEnds.clear();
-
-    for (int index : m_selComponents)
-        m_dragOriginalPos.push_back(m_components[index].pos);
-
-    // 找出“端点接在被选中元件引脚上”的导线，这些端点要跟着一起走
-    for (size_t w = 0; w < m_wires.size(); ++w)
-    {
-        for (int end = 0; end < 2; ++end)
-        {
-            const wxPoint point = (end == 0) ? m_wires[w].a : m_wires[w].b;
-
-            bool attached = false;
-
-            for (int compIndex : m_selComponents)
-            {
-                const ComponentInstance& comp = m_components[compIndex];
-
-                for (size_t k = 0; k < comp.pins.size(); ++k)
-                {
-                    if (PinPosition(comp, static_cast<int>(k)) == point)
-                    {
-                        attached = true;
-                        break;
-                    }
-                }
-
-                if (attached)
-                    break;
-            }
-
-            if (attached)
-            {
-                DragWireEnd item;
-                item.wireIndex = static_cast<int>(w);
-                item.end       = end;
-                item.original  = point;
-
-                m_dragWireEnds.push_back(item);
-            }
-        }
-    }
-
+    if(m_selComponents.empty())return;
+    m_dragging=true;m_dragMoved=false;m_dragStartWorld=world;
+    m_dragBaseComponents=m_components;m_dragBaseWires=m_wires;
     SetCursor(wxCursor(wxCURSOR_SIZING));
 }
-
 void SchematicCanvas::UpdateDrag(const wxPoint& world)
 {
-    if (!m_dragging || m_dragOriginalPos.size() != m_selComponents.size())
-        return;
-
-    // 位移量对齐到网格 → 移动后引脚仍然对齐（引脚本身也是 10 的倍数）
-    const wxPoint delta = SnapToGrid(wxPoint(world.x - m_dragStartWorld.x,
-                                             world.y - m_dragStartWorld.y));
-
-    if (delta.x == 0 && delta.y == 0 && !m_dragMoved)
-        return;
-
-    if (!m_dragMoved)
-    {
-        // 第一次真正移动前才压快照 —— 单纯的点击选中不该产生一步撤销
-        PushUndo(m_selComponents.size() == 1
-                     ? wxString::Format(L"移动 %s", m_components[m_selComponents.front()].refdes)
-                     : wxString::Format(L"移动 %d 个元件", static_cast<int>(m_selComponents.size())));
-        m_dragMoved = true;
-    }
-
-    for (size_t k = 0; k < m_selComponents.size(); ++k)
-    {
-        m_components[m_selComponents[k]].pos =
-            wxPoint(m_dragOriginalPos[k].x + delta.x, m_dragOriginalPos[k].y + delta.y);
-    }
-
-    // 接在引脚上的导线端点跟随（橡皮筋连线）
-    for (const DragWireEnd& item : m_dragWireEnds)
-    {
-        const wxPoint moved(item.original.x + delta.x, item.original.y + delta.y);
-
-        if (item.end == 0)
-            m_wires[item.wireIndex].a = moved;
-        else
-            m_wires[item.wireIndex].b = moved;
-    }
-
-    m_netsDirty = true;
-    GetNetGraph();
-
-    m_cursorWorld = world;
-
-    if (OnCursorMoved)
-        OnCursorMoved(m_cursorWorld);
-
-    Refresh();
+    if(!m_dragging)return;
+    const auto delta=SnapToGrid(world-m_dragStartWorld);
+    if(delta==wxPoint(0,0)&&!m_dragMoved)return;
+    if(!m_dragMoved){StopSimulation();PushUndo(L"移动元件及连接线");m_dragMoved=true;}
+    m_components=m_dragBaseComponents;m_wires=m_dragBaseWires;
+    MoveConnectedComponents(m_components,m_wires,m_selComponents,delta);
+    m_nextWireId=0;for(const auto& w:m_wires)m_nextWireId=std::max(m_nextWireId,w.id);
+    m_selWires.clear();m_netsDirty=true;GetNetGraph();m_cursorWorld=world;
+    if(OnCursorMoved)OnCursorMoved(world);Refresh();
 }
-
 void SchematicCanvas::EndDrag()
 {
-    if (!m_dragging)
-        return;
-
-    m_dragging = false;
-    const size_t originalCount=m_wires.size();
-    if(m_dragMoved) for(size_t i=0;i<originalCount;++i) if(!m_wires[i].IsAxisAligned()) {
-        const wxPoint end=m_wires[i].b, bend(end.x,m_wires[i].a.y);
-        m_wires[i].b=bend;
-        Wire tail;tail.id=++m_nextWireId;tail.a=bend;tail.b=end;m_wires.push_back(tail);
-    }
-    m_wires.erase(std::remove_if(m_wires.begin(),m_wires.end(),[](const Wire& w){return w.a==w.b;}),m_wires.end());
-    m_netsDirty=true;
-    SetCursor(wxCursor(wxCURSOR_CROSS));
-
-    if (m_dragMoved)
-    {
-        Touch();
-
-        if (OnStatusMessage)
-            OnStatusMessage(m_selComponents.size() == 1
-                                ? wxString::Format(L"已移动 %s 到 (%d, %d)（%d 个导线端点跟随）",
-                                                   m_components[m_selComponents.front()].refdes,
-                                                   m_components[m_selComponents.front()].pos.x,
-                                                   m_components[m_selComponents.front()].pos.y,
-                                                   static_cast<int>(m_dragWireEnds.size()))
-                                : wxString::Format(L"已移动 %d 个元件（%d 个导线端点跟随）",
-                                                   static_cast<int>(m_selComponents.size()),
-                                                   static_cast<int>(m_dragWireEnds.size())));
-
-        NotifySelectionChanged();
-    }
-
-    m_dragMoved = false;
-    m_dragOriginalPos.clear();
-    m_dragWireEnds.clear();
-    Refresh();
+    if(!m_dragging)return;m_dragging=false;SetCursor(wxCursor(wxCURSOR_CROSS));
+    if(m_dragMoved){Touch();NotifySelectionChanged();if(OnStatusMessage)OnStatusMessage(L"已移动元件并保持连接节点；可用Ctrl+Z撤销");}
+    m_dragMoved=false;m_dragBaseComponents.clear();m_dragBaseWires.clear();Refresh();
 }
 
 // ------------------------------------------------------------
@@ -1740,6 +1638,7 @@ void SchematicCanvas::DeselectAll()
 
 void SchematicCanvas::ClearAll(bool markModified)
 {
+    StopSimulation();
     // 清空也算一次可撤销的操作（新建文档时由 MainFrame 传 false 并另行清栈）
     if (markModified && (!m_components.empty() || !m_wires.empty()))
         PushUndo(L"清空画布");
@@ -1790,6 +1689,7 @@ void SchematicCanvas::SetDocument(const std::vector<ComponentInstance>& componen
                                   bool   snapEnabled,
                                   double zoom)
 {
+    StopSimulation();
     m_components  = components;
     m_wires       = wires;
     m_gridStep    = std::max(1, gridStep);
@@ -2055,19 +1955,27 @@ void SchematicCanvas::Annotate() {
 bool SchematicCanvas::SetComponentProperty(const wxString& key,const wxString& value,wxString& error) {
     int index=GetSelectedComponentIndex();
     if(index<0) { error=L"请只选中一个元件";return false; }
+    auto candidate=m_components[index];
     if(key=="refdes") {
-        if(value.empty()) {error=L"位号不能为空";return false;}
-        for(size_t i=0;i<m_components.size();++i)
-            if((int)i!=index && m_components[i].refdes==value) {error=L"位号已存在";return false;}
-    }
-    if(key!="refdes" && key!="value" && key!="footprint") {error=L"不支持的属性";return false;}
-    PushUndo(L"修改元件属性");
-    auto& c=m_components[index];
-    if(key=="refdes") c.refdes=value;
-    if(key=="value") c.value=value;
-    if(key=="footprint") c.footprint=value;
-    m_netsDirty=true;Touch();Refresh();
-    // Do not rebuild wxPropertyGrid inside its own event callback.
+        if(value.empty()){error=L"位号不能为空";return false;}
+        for(size_t i=0;i<m_components.size();++i)if((int)i!=index && m_components[i].refdes==value){error=L"位号已存在";return false;}
+        candidate.refdes=value;
+    }else if(key=="value") {
+        if(DigitalModel(candidate)=="input"&&value!="0"&&value!="1"&&value!="X"){error=L"输入初值只能为0、1或X";return false;}
+        candidate.value=value;
+    }else if(key=="footprint")candidate.footprint=value;
+    else if(key=="delay"||key=="clockPeriod") {
+        long n=0;if(!value.ToLong(&n)||n<1||n>(key=="delay"?1000:10000)||(key=="clockPeriod"&&(n<2||n%2))){error=L"延迟为1..1000；时钟周期为2..10000的偶数";return false;}
+        if(key=="delay")candidate.delayTicks=(int)n;else candidate.clockPeriodTicks=(int)n;
+    }else if(key=="truth"){
+        candidate.truthTable=value;DigitalSimulator probe;
+        if(!probe.Reset({candidate},NetBuilder::Build({candidate},{}),error))return false;
+    }else if(key.StartsWith("pin.")){
+        long k=0;if(!key.Mid(4).ToLong(&k)||k<0||k>=(long)candidate.pins.size()||value.empty()){error=L"非法引脚编号";return false;}
+        for(size_t i=0;i<candidate.pins.size();++i)if((long)i!=k&&PcbPinNumber(candidate,i)==value){error=L"引脚编号重复";return false;}
+        candidate.pins[k].number=value;
+    }else {error=L"不支持的属性";return false;}
+    PushUndo(L"修改元件属性");m_components[index]=candidate;m_netsDirty=true;Touch();Refresh();
     return true;
 }
 void SchematicCanvas::SetGridStep(int value) {
@@ -2085,4 +1993,37 @@ bool SchematicCanvas::ExportPng(const wxString& path) {
 }
 namespace se {
 void SchematicCanvas::SetWireBundle(int width) {SetTool(ToolWire);m_bundleWidth=std::max(1,std::min(32,width));}
+}
+
+namespace se {
+bool SchematicCanvas::StartSimulation(wxString& error){
+    if(m_components.empty()){error=L"请先绘制电路";return false;}
+    if(!m_simActive){
+        FinishWire();m_pending=nullptr;m_tool=ToolSelect;
+        if(!m_simulator.Reset(m_components,GetNetGraph(),error))return false;
+        m_simActive=true;
+    }
+    m_simTimer.Start(100);SimulationChanged();return true;
+}
+bool SchematicCanvas::StepSimulation(wxString& error){
+    if(!m_simActive && !StartSimulation(error))return false;
+    m_simTimer.Stop();
+    if(!m_simulator.Advance()){error=m_simulator.Error();StopSimulation();return false;}
+    SimulationChanged();return true;
+}
+void SchematicCanvas::StopSimulation(){m_simTimer.Stop();if(m_simActive){m_simActive=false;Refresh();}}
+void SchematicCanvas::OnSimTimer(wxTimerEvent&){
+    if(!m_simActive)return;
+    if(!m_simulator.Advance()){const auto error=m_simulator.Error();StopSimulation();if(OnStatusMessage)OnStatusMessage(error);return;}
+    SimulationChanged();
+}
+void SchematicCanvas::SimulationChanged(){
+    Refresh();if(OnStatusMessage)OnStatusMessage(wxString::Format(L"仿真 t=%llu步；转换=%llu；空格/双击输入切换，F6单步，Shift+F5停止。编辑电路会停止并清除运行状态。",(unsigned long long)m_simulator.Time(),(unsigned long long)m_simulator.TransitionCount()));
+}
+bool SchematicCanvas::ToggleSimulationInput(){
+    if(!m_simActive)return false;auto* c=GetSelectedComponent();
+    if(!c||DigitalModel(*c)!="input")return false;
+    if(!m_simulator.SetInput(c->id,m_simulator.InputValue(c->id)==1?0:1))return false;
+    SimulationChanged();return true;
+}
 }

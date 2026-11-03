@@ -1,3 +1,4 @@
+#include "KiCadExport.h"
 #include "MainFrame.h"
 #include "CircuitTools.h"
 #include <wx/choicdlg.h>
@@ -229,7 +230,7 @@ void MainFrame::CreateMenus()
     fileMenu->AppendSubMenu(importMenu, L"导入");
 
     wxMenu* exportMenu = new wxMenu;
-    exportMenu->Append(ID_FILE_EXPORT, L"导出网表 (.net)...");
+    exportMenu->Append(ID_FILE_EXPORT, L"导出KiCad标准网表 (.net)...");
     exportMenu->Append(ID_FILE_EXPORT_PNG, L"导出当前画布 PNG...");
     fileMenu->AppendSubMenu(exportMenu, L"导出");
 
@@ -364,6 +365,12 @@ void MainFrame::CreateMenus()
     toolsMenu->Append(ID_TOOLS_SIMULATOR, L"电路仿真器...");
 
     menuBar->Append(toolsMenu, L"工具(&T)");
+    wxMenu* simulationMenu=new wxMenu;
+    simulationMenu->Append(ID_SIM_RUN,L"运行 / 继续\tF5");
+    simulationMenu->Append(ID_SIM_STEP,L"暂停并单步\tF6");
+    simulationMenu->Append(ID_SIM_TOGGLE_INPUT,L"切换选中输入（画布空格 / 双击）");
+    simulationMenu->Append(ID_SIM_STOP,L"停止\tShift+F5");
+    menuBar->Append(simulationMenu,L"仿真(&S)");
 
     // ========================================================
     // 首选项
@@ -407,6 +414,8 @@ void MainFrame::CreateMenus()
     Bind(wxEVT_TOOL, &MainFrame::OnCommand, this, wxID_LOWEST, ID_SIM_STOP);
 
     Bind(wxEVT_MENU, &MainFrame::OnCommand, this, ID_FILE_EXPORT_PNG);
+    Bind(wxEVT_MENU,&MainFrame::OnCommand,this,ID_SIM_STEP);
+    Bind(wxEVT_MENU,&MainFrame::OnCommand,this,ID_SIM_TOGGLE_INPUT);
     // 最近打开文件：单独绑定（不参与上面的兜底区间）
     Bind(wxEVT_MENU, &MainFrame::OnRecentFile, this,
          ID_FILE_RECENT_BASE, ID_FILE_RECENT_BASE + ID_FILE_RECENT_MAX - 1);
@@ -602,7 +611,11 @@ void MainFrame::UpdateProperties()
         m_props->AddRow(L"元件名称", comp->name);
         m_props->AddEditableRow("refdes", L"位号", comp->refdes);
         m_props->AddEditableRow("value", L"参数 / 标签 / 输入值", comp->value);
-        m_props->AddEditableRow("footprint", L"封装", comp->footprint);
+        m_props->AddEditableRow("footprint", L"KiCad封装", comp->footprint);
+        m_props->AddRow(L"数字模型",DigitalModel(*comp));
+        m_props->AddEditableRow("delay",L"传播延迟（步）",wxString::Format("%d",comp->delayTicks));
+        if(DigitalModel(*comp)=="clock")m_props->AddEditableRow("clockPeriod",L"时钟周期（偶数步）",wxString::Format("%d",comp->clockPeriodTicks));
+        if(DigitalModel(*comp)=="truth")m_props->AddEditableRow("truth",L"自定义真值表",comp->truthTable);
         m_props->AddIntRow(L"X 坐标", comp->pos.x);
         m_props->AddIntRow(L"Y 坐标", comp->pos.y);
         m_props->AddIntRow(L"引脚数", static_cast<int>(comp->pins.size()));
@@ -617,6 +630,7 @@ void MainFrame::UpdateProperties()
                                      ? graph.pinNet[compIndex][k]
                                      : -1;
 
+            m_props->AddEditableRow(wxString::Format("pin.%zu",k),comp->pins[k].name+L"：PCB脚号",PcbPinNumber(*comp,k));
             m_props->AddRow(wxString::Format(L"%s（%s）",
                                              comp->pins[k].name,
                                              comp->pins[k].dir == PinDir::Output ? L"输出" : L"输入"),
@@ -925,7 +939,7 @@ bool MainFrame::DoExportNetlist()
                                      : wxFileName(m_currentFile).GetName() + L".net";
 
     wxFileDialog dialog(this,
-                        L"导出网络表",
+                        L"导出KiCad标准网络表",
                         wxEmptyString,
                         defaultName,
                         SchematicIO::NetlistWildcard(),
@@ -936,7 +950,9 @@ bool MainFrame::DoExportNetlist()
 
     wxString error;
 
-    if (!SchematicIO::WriteTextFile(dialog.GetPath(), m_canvas->BuildNetlist(), &error))
+    wxString text;
+    if (!BuildKiCadNetlist(m_canvas->GetComponents(),m_canvas->GetNetGraph(),text,error) ||
+        !SchematicIO::WriteTextFile(dialog.GetPath(), text, &error))
     {
         wxMessageBox(wxString::Format(L"导出失败：\n%s", error),
                      L"导出网表", wxOK | wxICON_ERROR, this);
@@ -1271,11 +1287,11 @@ void MainFrame::OnCommand(wxCommandEvent& event)
         case ID_SIM_RUN:
         case ID_TOOLS_SIMULATOR:
         {
-            const auto result=SimulateDigital(m_canvas->GetComponents(),m_canvas->GetNetGraph());
-            TextReportDialog dialog(this,L"数字组合电路静态求值",result.report,true,L"digital-result.txt");
-            dialog.ShowModal(); return;
+            wxString error;if(!m_canvas->StartSimulation(error))wxMessageBox(error,L"无法启动数字仿真",wxOK|wxICON_ERROR,this);return;
         }
-        case ID_SIM_STOP: SetHint(L"静态求值已结束，无后台时序任务"); return;
+        case ID_SIM_STOP: m_canvas->StopSimulation();SetHint(L"数字仿真已停止；电路初值不变");return;
+        case ID_SIM_STEP:{wxString error;if(!m_canvas->StepSimulation(error))wxMessageBox(error,L"无法单步",wxOK|wxICON_ERROR,this);return;}
+        case ID_SIM_TOGGLE_INPUT: if(!m_canvas->ToggleSimulationInput())SetHint(L"请启动仿真并选中输入引脚或常量");return;
         case ID_PLACE_TEXT:
             m_canvas->SetTool(SchematicCanvas::ToolText); return;
         case ID_TOOLS_ANNOTATE:
@@ -1327,7 +1343,7 @@ void MainFrame::OnCommand(wxCommandEvent& event)
         }
         case ID_HELP_DOCUMENTATION:
         {
-            TextReportDialog dialog(this,L"用户手册",L"从元件库选元件，在画布空白处放置。选择导线工具后单击起点和折点，右键结束。\nCtrl/Shift 单击加选，空白处拖动框选。\n右侧可编辑位号、参数、封装；输入引脚和常量参数填写 0 或 1；标签参数填写网络名。\n数字求值仅支持组合逻辑和静态输入，不提供模拟电路或时序仿真。\n项目以 .ses XML 保存；.net 为本项目自定义格式，非完整 SPICE 模型。\nPNG 导出当前视口；复制粘贴仅在本应用会话内有效。\n",false);
+            TextReportDialog dialog(this,L"用户手册",L"从元件库选元件，在画布空白处放置。选择导线工具后单击起点和折点，右键结束。\nCtrl/Shift 单击加选，空白处拖动框选。\n右侧可编辑位号、参数、封装；输入引脚和常量参数填写 0 或 1；标签参数填写网络名。\nF5启动数字逻辑仿真；空格或双击输入切换运行值，F6暂停单步，Shift+F5停止。每门具有传播延迟，时钟周期可编辑。运行值不写回设计初值。\n项目以 .ses XML 保存；.net 导出KiCad原生S表达式；查看网络表是内部诊断。PCB脚号可编辑，封装须为Library:Footprint。\nPNG 导出当前视口；复制粘贴仅在本应用会话内有效。\n",false);
             dialog.ShowModal();return;
         }
         case ID_PLACE_BUS:

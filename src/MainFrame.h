@@ -35,6 +35,9 @@ class MainFrame : public wxFrame
 {
 public:
     MainFrame();
+    SchematicCanvas* Canvas() const {return m_canvas;}
+    bool OpenDocument(const wxString& path) {return OpenPath(path);}
+
 
 private:
     // ---- 界面构建 ----
