@@ -410,9 +410,14 @@ NetGraph NetBuilder::Build(const std::vector<ComponentInstance>& components,
             graph.nets[it->second].nodes.push_back(points[n]);
     }
 
+    // Reserve all explicit names before assigning anonymous names, including labels
+    // such as N2 that would otherwise collide with a different automatic network.
+    std::set<wxString> usedNames;
+    for(const auto& entry:namedNodes)usedNames.insert(entry.first);
     // 3.3 电源网络改名：连到 GND / VCC 的网络直接用电源符号名
     for (Net& net : graph.nets)
     {
+        bool explicitName=false;
         for (const PinRef& ref : net.pins)
         {
             const int c = ref.compIndex;
@@ -422,15 +427,22 @@ NetGraph NetBuilder::Build(const std::vector<ComponentInstance>& components,
 
             const wxString& compName = components[c].name;
 
-            if ((compName == L"网络标签" || compName == L"全局标签") && !components[c].value.empty())
-                net.name = components[c].value;
+            if ((compName == L"网络标签" || compName == L"全局标签") && !components[c].value.empty()) {
+                net.name = components[c].value;explicitName=true;
+            }
             if (compName == L"GND" || compName == L"VCC")
             {
                 net.name    = compName;
                 net.isPower = true;
+                explicitName=true;
                 break;
             }
         }
+        if(!explicitName){
+            int suffix=net.index;
+            do {net.name=wxString::Format(L"N%d",suffix++);}while(usedNames.count(net.name));
+        }
+        usedNames.insert(net.name);
     }
 
     // 3.4 导线 → 网络

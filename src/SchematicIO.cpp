@@ -115,6 +115,39 @@ void SetError(wxString* error, const wxString& message)
         *error = message;
 }
 
+bool ValidateDocument(const SchematicDocument& doc,wxString* error)
+{
+    if(doc.gridStep<1||doc.gridStep>100||!std::isfinite(doc.zoom)||doc.zoom<0.2||doc.zoom>8.0){
+        SetError(error,L"视图参数超出范围");return false;
+    }
+    std::set<int> componentIds,wireIds;
+    for(const auto& c:doc.components){
+        if(c.id<=0||c.id>1000000000||!componentIds.insert(c.id).second||c.name.empty()||c.refdes.empty()||
+           c.w<0||c.h<0||c.w>10000||c.h>10000||c.delayTicks<1||c.delayTicks>1000||
+           c.clockPeriodTicks<2||c.clockPeriodTicks>10000||c.clockPeriodTicks%2||
+           std::abs((long long)c.pos.x)>10000000||std::abs((long long)c.pos.y)>10000000){
+            SetError(error,L"元件 ID、名称、位号或几何尺寸非法");return false;
+        }
+        if(c.pins.empty()&&c.name!=L"文本"&&c.name!=L"未连接标记"){
+            SetError(error,L"元件缺少引脚定义");return false;
+        }
+        for(const auto& pin:c.pins){
+            const bool direction=pin.dir==PinDir::Input||pin.dir==PinDir::Output||pin.dir==PinDir::Bidir||pin.dir==PinDir::Passive;
+            const bool side=pin.side==Side::Left||pin.side==Side::Right||pin.side==Side::Top||pin.side==Side::Bottom;
+            if(pin.name.empty()||pin.count<1||pin.slot<0||pin.slot>=pin.count||pin.count>1000||!direction||!side){
+                SetError(error,L"引脚定义非法");return false;
+            }
+        }
+    }
+    for(const auto& w:doc.wires)if(w.id<=0||w.id>1000000000||!wireIds.insert(w.id).second||w.a==w.b||!w.IsAxisAligned()||
+        std::abs((long long)w.a.x)>10000000||std::abs((long long)w.a.y)>10000000||
+        std::abs((long long)w.b.x)>10000000||std::abs((long long)w.b.y)>10000000){
+        SetError(error,L"导线 ID 或坐标非法");return false;
+    }
+    if(error)error->clear();
+    return true;
+}
+
 } // namespace
 
 // ============================================================
@@ -137,6 +170,7 @@ wxString SchematicIO::NetlistWildcard()
 
 bool SchematicIO::Save(const wxString& path, const SchematicDocument& doc, wxString* error)
 {
+    if(!ValidateDocument(doc,error))return false;
     wxXmlDocument xml;
     xml.SetFileEncoding(L"UTF-8");
 
@@ -364,24 +398,7 @@ bool SchematicIO::Load(const wxString& path, SchematicDocument& doc, wxString* e
         }
     }
 
-    if (loaded.gridStep < 1 || loaded.gridStep > 100 || !std::isfinite(loaded.zoom) || loaded.zoom < 0.2 || loaded.zoom > 8.0) {
-        SetError(error,L"视图参数超出范围");return false;
-    }
-    std::set<int> componentIds, wireIds;
-    for (const auto& c : loaded.components) {
-        if (c.id<=0 || c.id>1000000000 || !componentIds.insert(c.id).second || c.name.empty() || c.refdes.empty() || c.w<0 || c.h<0 || c.w>10000 || c.h>10000 || c.delayTicks<1 || c.delayTicks>1000 || c.clockPeriodTicks<2 || c.clockPeriodTicks>10000 || c.clockPeriodTicks%2 ||
-            std::abs((long long)c.pos.x)>10000000 || std::abs((long long)c.pos.y)>10000000) {
-            SetError(error,L"元件 ID、名称、位号或几何尺寸非法");return false;
-        }
-        for(const auto& pin:c.pins) if(pin.name.empty() || pin.count<1 || pin.slot<0 || pin.slot>=pin.count || pin.count>1000) {
-            SetError(error,L"引脚定义非法");return false;
-        }
-    }
-    for(const auto& w:loaded.wires) if(w.id<=0 || w.id>1000000000 || !wireIds.insert(w.id).second || w.a==w.b || !w.IsAxisAligned() ||
-        std::abs((long long)w.a.x)>10000000 || std::abs((long long)w.a.y)>10000000 ||
-        std::abs((long long)w.b.x)>10000000 || std::abs((long long)w.b.y)>10000000) {
-        SetError(error,L"导线 ID 或坐标非法");return false;
-    }
+    if(!ValidateDocument(loaded,error))return false;
     doc = loaded;
     return true;
 }

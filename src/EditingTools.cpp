@@ -6,8 +6,14 @@ namespace se {
 void MoveConnectedComponents(std::vector<ComponentInstance>& cs,std::vector<Wire>& ws,const std::vector<int>& selected,const wxPoint& delta){
     if(delta==wxPoint(0,0)||selected.empty())return;
     std::set<std::pair<int,int>> moving,nodes;
+    std::set<int> selectedIndices;
+    for(int ci:selected)if(ci>=0&&ci<(int)cs.size())selectedIndices.insert(ci);
+    if(selectedIndices.empty())return;
     for(const auto& c:cs)for(size_t k=0;k<c.pins.size();++k){auto p=PinPosition(c,k);nodes.insert({p.x,p.y});}
-    for(int ci:selected)if(ci>=0&&ci<(int)cs.size())for(size_t k=0;k<cs[ci].pins.size();++k){auto p=PinPosition(cs[ci],k);moving.insert({p.x,p.y});}
+    for(int ci:selectedIndices)for(size_t k=0;k<cs[ci].pins.size();++k){auto p=PinPosition(cs[ci],k);moving.insert({p.x,p.y});}
+    std::set<std::pair<int,int>> retained;
+    for(size_t ci=0;ci<cs.size();++ci)if(!selectedIndices.count((int)ci))
+        for(size_t k=0;k<cs[ci].pins.size();++k){auto p=PinPosition(cs[ci],k);if(moving.count({p.x,p.y}))retained.insert({p.x,p.y});}
     int nextId=0;for(const auto& w:ws){nextId=std::max(nextId,w.id);nodes.insert({w.a.x,w.a.y});nodes.insert({w.b.x,w.b.y});}
     std::vector<Wire> pieces;
     for(const auto& w:ws){std::vector<wxPoint> cuts;
@@ -29,6 +35,17 @@ void MoveConnectedComponents(std::vector<ComponentInstance>& cs,std::vector<Wire
             if(bend!=end)ws.push_back({++nextId,bend,end});
         }
     }
-    for(int ci:selected)if(ci>=0&&ci<(int)cs.size())cs[ci].pos+=delta;
+    // A coincident unselected terminal must retain a path to the moved node even
+    // when every original wire endpoint at that coordinate moved with the selection.
+    auto retainSegment=[&](const wxPoint& start,const wxPoint& end){
+        if(start==end)return;
+        for(const auto& wire:ws)if(PointOnSegment(start,wire.a,wire.b)&&PointOnSegment(end,wire.a,wire.b))return;
+        ws.push_back({++nextId,start,end});
+    };
+    for(auto at:retained){
+        wxPoint start(at.first,at.second),end=start+delta,bend(end.x,start.y);
+        retainSegment(start,bend);retainSegment(bend,end);
+    }
+    for(int ci:selectedIndices)cs[ci].pos+=delta;
 }
 }
