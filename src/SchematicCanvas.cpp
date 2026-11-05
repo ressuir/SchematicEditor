@@ -2,6 +2,7 @@
 #include "SchematicCanvas.h"
 #include "CircuitTools.h"
 #include "KiCadExport.h"
+#include "Ids.h"
 
 #include <wx/dcbuffer.h>
 #include <wx/graphics.h>
@@ -1150,6 +1151,25 @@ void SchematicCanvas::OnLeaveWindow(wxMouseEvent& event)
 
 void SchematicCanvas::OnKeyDown(wxKeyEvent& event)
 {
+    // GTK does not reliably activate menu accelerators made of a bare letter.
+    // Route advertised canvas shortcuts through the same menu command handlers.
+    if(!event.HasAnyModifiers()) {
+        int command=wxID_NONE;
+        switch(event.GetKeyCode()) {
+            case 'W': command=ID_PLACE_WIRE;break;
+            case 'A': command=ID_PLACE_COMPONENT;break;
+            case 'B': command=ID_PLACE_BUS;break;
+            case 'L': command=ID_PLACE_NET_LABEL;break;
+            case 'Q': command=ID_PLACE_NOCONNECT;break;
+            case 'E': command=ID_INSPECT_PROPERTIES;break;
+            default:break;
+        }
+        if(command!=wxID_NONE) {
+            wxCommandEvent menu(wxEVT_MENU,command);
+            wxPostEvent(wxGetTopLevelParent(this),menu);
+            return;
+        }
+    }
     if (event.ControlDown()) {
         const int key = event.GetKeyCode();
         if (key == 'C') { CopySelection(); return; }
@@ -1167,7 +1187,6 @@ void SchematicCanvas::OnKeyDown(wxKeyEvent& event)
             if (m_wireDrawing)
             {
                 FinishWire();
-                return;
             }
 
             m_pending = nullptr;

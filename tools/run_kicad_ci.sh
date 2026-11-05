@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export GDK_BACKEND=x11 GTK_USE_PORTAL=0
+unset WAYLAND_DISPLAY
 mkdir -p ci-artifacts/kicad
 openbox > ci-artifacts/kicad/window-manager.log 2>&1 &
 wm_pid=$!

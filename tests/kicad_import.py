@@ -78,7 +78,7 @@ try:
         config_path=Path(config)/'kicad'/f'{version[1]}.{version[2]}';config_path.mkdir(parents=True)
         table='(fp_lib_table (lib (name "Connector_PinHeader_2.54mm") (type "KiCad") (uri "'+str(footprint_dir)+'") (options "") (descr "CI test footprints")))\n'
         (config_path/'fp-lib-table').write_text(table)
-        (config_path/'kicad_common.json').write_text(json.dumps({'meta':{'filename':'kicad_common.json','version':1},'system':{'language':0}}))
+        (config_path/'kicad_common.json').write_text(json.dumps({'meta':{'filename':'kicad_common.json','version':1},'system':{'language':''}}))
         env=dict(os.environ,XDG_CONFIG_HOME=config,LC_ALL='C.UTF-8',LANG='C.UTF-8',NO_AT_BRIDGE='0',LIBGL_ALWAYS_SOFTWARE='1')
         log_file=(out/'pcbnew-process.log').open('w')
         process=subprocess.Popen(['pcbnew',str(board_path)],env=env,stdout=log_file,stderr=subprocess.STDOUT)

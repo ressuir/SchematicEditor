@@ -30,7 +30,7 @@ int main(int argc,char**argv){
  command(frame,se::ID_PLACE_WIRE);auto pin=se::PinPosition(canvas->GetComponents()[0],2);click(canvas,canvas->ScreenPoint(pin));click(canvas,canvas->ScreenPoint(pin+wxPoint(100,0)));canvas->FinishWire();check(canvas->GetWireCount()>0,"wire tool creates a line from a real pin");
  command(frame,se::ID_EDIT_SELECT_ALL);command(frame,wxID_COPY);command(frame,wxID_PASTE);check(canvas->GetComponentCount()==2,"copy/paste menu creates independent component");command(frame,wxID_UNDO);check(canvas->GetComponentCount()==1,"undo reverses paste as one transaction");
  const auto saved=out+"/gui-roundtrip.ses";check(wxCopyFile(examples+"/dynamic-and.ses",saved,true),"prepare private GUI file fixture");check(frame->OpenDocument(saved),"open real design in frame");pump();
- click(canvas,canvas->ScreenPoint(canvas->GetComponents()[0].pos+wxPoint(20,20)));
+ click(canvas,canvas->ScreenPoint(canvas->GetComponents()[0].pos+wxPoint(20,5)));
  auto* grid=dynamic_cast<wxPropertyGrid*>(frame->FindWindow(se::ID_PROPERTY_GRID));check(grid&&grid->ChangePropertyValue("value",wxVariant("1")),"property grid change runs validation and edit callback");pump();check(canvas->GetComponents()[0].value=="1","property edit changes persistent model");command(frame,wxID_SAVE);
  command(frame,se::ID_FILE_CLOSE_PROJECT);check(canvas->GetComponentCount()==0,"close project clears canvas and history");check(frame->OpenDocument(saved)&&canvas->GetComponents()[0].value=="1","reopen restores saved edited value");
  command(frame,se::ID_SIM_STEP);check(canvas->SimulationActive()&&canvas->SimulationTime()==1,"GUI single step initializes and advances live engine");

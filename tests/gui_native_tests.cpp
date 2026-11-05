@@ -49,7 +49,7 @@ struct Deferred:wxTimer {
 void fileCommand(int modifiers,int letter,const wxString& path){
     bool typed=false;
     Deferred fill([&]{
-        typed=input->Char('L',wxMOD_CONTROL)&&input->Text(path.utf8_str())&&input->Char(WXK_RETURN);
+        typed=input->Char('L',wxMOD_CONTROL)&&input->Char('A',wxMOD_CONTROL)&&input->Text(path.utf8_str())&&input->Char(WXK_RETURN);
     });
     Deferred accept([&]{input->Char(WXK_RETURN);});
     Deferred timeout([]{screenshot("file-dialog-timeout.png");std::cerr<<"FAIL native file dialog timed out\n";std::exit(1);});
@@ -79,7 +79,9 @@ int main(int argc,char** argv){
     check(canvas->GetComponentCount()==2,"native clicks place two gates");key(WXK_ESCAPE);
     const auto original=canvas->GetComponents()[0].pos;
     const auto from=se::PinPosition(canvas->GetComponents()[0],2),to=se::PinPosition(canvas->GetComponents()[1],0);
-    key('W');click(canvas,canvas->ScreenPoint(from));click(canvas,canvas->ScreenPoint(to));key(WXK_ESCAPE);
+    key('W');check(canvas->GetTool()==se::SchematicCanvas::ToolWire,"native W shortcut activates wire tool");
+    click(canvas,canvas->ScreenPoint(from));click(canvas,canvas->ScreenPoint(to));key(WXK_ESCAPE);
+    check(canvas->GetTool()==se::SchematicCanvas::ToolSelect,"native Escape ends wiring and restores selection tool");
     auto connected=[&]{const auto& graph=canvas->GetNetGraph();return graph.pinNet[0][2]==graph.pinNet[1][0];};
     check(canvas->GetWireCount()>0&&connected(),"native wire tool connects output to destination input");
     const auto start=canvas->ScreenPoint(original+wxPoint(30,20));
@@ -91,7 +93,7 @@ int main(int argc,char** argv){
     key('Z',wxMOD_CONTROL);check(canvas->GetComponents()[0].pos==original&&connected(),"native undo restores geometry and connectivity");
     key('Y',wxMOD_CONTROL);check(canvas->GetComponents()[0].pos==moved&&connected(),"native redo restores moved geometry and connectivity");
     key('Z',wxMOD_CONTROL);
-    const wxString saved=wxFileName(artifacts,"native-roundtrip.ses").GetFullPath();
+    const wxString saved=wxFileName(artifacts,wxString::Format("native-roundtrip-%ld.ses",wxGetProcessId())).GetFullPath();
     fileCommand(wxMOD_CONTROL|wxMOD_SHIFT,'S',saved);
     check(wxFileExists(saved)&&!canvas->IsModified(),"native save-as dialog writes design and clears dirty state");
     const auto wireCount=canvas->GetWireCount();key('N',wxMOD_CONTROL);
@@ -100,7 +102,7 @@ int main(int argc,char** argv){
     check(canvas->GetComponentCount()==2&&canvas->GetWireCount()==wireCount&&canvas->GetComponents()[0].pos==original&&connected(),"native open dialog restores saved components, geometry and connectivity");
     check(screenshot("native-edit-roundtrip.png"),"capture real displayed editing result");
     fileCommand(wxMOD_CONTROL,'O',wxFileName(examples,"dynamic-and.ses").GetFullPath());
-    click(canvas,canvas->ScreenPoint(canvas->GetComponents()[0].pos+wxPoint(20,20)));key(WXK_F6);
+    click(canvas,canvas->ScreenPoint(canvas->GetComponents()[0].pos+wxPoint(20,5)));key(WXK_F6);
     const auto output=canvas->GetNetGraph().pinNet[2][2];
     check(canvas->SimulationActive()&&canvas->SimulationValue(output)==0,"native single-step starts engine and settles initial AND output");
     key(WXK_SPACE);click(canvas,canvas->ScreenPoint(canvas->GetComponents()[1].pos+wxPoint(20,20)));key(WXK_SPACE);
