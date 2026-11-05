@@ -69,6 +69,8 @@ jobs:
           path: |
             ci-artifacts/
             dist/
+            !ci-artifacts/**/*.kicad_prl
+            !ci-artifacts/**/*.lck
           if-no-files-found: error
           retention-days: 30
 
