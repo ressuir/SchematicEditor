@@ -56,7 +56,18 @@ def wait_for(find,description,timeout=25):
         time.sleep(.15)
     raise RuntimeError('Timed out waiting for '+description)
 
-def clean(name):return (name or '').replace('&','').replace('_','').strip()
+def clean(name):return (name or '').split('\t')[0].replace('&','').replace('_','').strip()
+
+def dump_accessibility():
+    # Preserve the real controls available at failure, including hidden submenu
+    # items, so differences between distro KiCad/GTK builds are diagnosable.
+    try:
+        nodes=[]
+        for node in walk(pyatspi.Registry.getDesktop(0)):
+            try:nodes.append({'name':node.name,'role':node.getRoleName(),'showing':node.getState().contains(pyatspi.STATE_SHOWING)})
+            except Exception:continue
+        (out/'accessibility.json').write_text(json.dumps(nodes,indent=2)+'\n')
+    except Exception:pass
 
 try:
     import pcbnew
@@ -113,6 +124,10 @@ try:
             click_named(r'OK',{'push button'},first_use);time.sleep(1)
         click_named(r'File',{'menu','menu item'})
         click_named(r'Import',{'menu','menu item'})
+        # GTK can close a submenu on a mouse click after pointer hover has
+        # already opened it. Explicitly expand the selected Import menu with
+        # the native Right key before locating its actual Netlist command.
+        subprocess.run(['xdotool','key','Right'],check=True,timeout=10)
         click_named(r'Netlist\.{3}|Netlist…|Import Netlist\.{3}',{'menu item','menu'})
         dialog=wait_for(lambda:find(r'Import Netlist',{'dialog','frame'}),'netlist import dialog')
         def entry():
@@ -148,6 +163,7 @@ try:
         result['verified']=True;event('PASS real KiCad import, loaded footprints and every pad connection')
 except Exception as exc:
     result['error']=str(exc);event('FAIL real KiCad import',error=str(exc))
+    dump_accessibility()
     try:screenshot('failure.png')
     except Exception:pass
 finally:
