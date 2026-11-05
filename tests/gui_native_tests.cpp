@@ -7,6 +7,7 @@
 #include <wx/filefn.h>
 #include <wx/timer.h>
 #include <wx/stopwatch.h>
+#include <wx/evtloop.h>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -21,15 +22,24 @@ wxString artifacts;
 wxUIActionSimulator* input=nullptr;
 int checks=0;
 void pump(int milliseconds=120){
-    wxStopWatch watch;
-    while(watch.Time()<milliseconds){wxYield();wxTheApp->ProcessPendingEvents();wxMilliSleep(10);}
+    // A genuine nested GTK event loop also dispatches frame-clock/paint events;
+    // wxYield alone can update the model while leaving stale pixels onscreen.
+    wxEventLoop loop;
+    struct Stop:wxTimer {
+        wxEventLoop& loop;
+        explicit Stop(wxEventLoop& value):loop(value){}
+        void Notify()override{loop.ScheduleExit();}
+    } stop(loop);
+    stop.StartOnce(milliseconds);loop.Run();
 }
 bool screenshot(const wxString& filename){
     if(!frame)return false;
-    wxScreenDC screen;const auto r=frame->GetScreenRect();wxBitmap bitmap(r.width,r.height);
-    wxMemoryDC memory(bitmap);memory.Blit(0,0,r.width,r.height,&screen,r.x,r.y);
-    memory.SelectObject(wxNullBitmap);
-    return bitmap.ConvertToImage().SaveFile(artifacts+"/"+filename,wxBITMAP_TYPE_PNG);
+    // Capture the X server's displayed pixels independently of wxGTK's drawing
+    // caches. wxScreenDC can return stale surfaces after native modal dialogs.
+    const wxString fullpath=artifacts+"/"+filename;
+    const auto path=fullpath.utf8_str();
+    const char* args[]={"scrot","-o",path.data(),nullptr};
+    return wxExecute(args,wxEXEC_SYNC)==0&&wxFileExists(artifacts+"/"+filename);
 }
 void check(bool condition,const char* name){
     if(!condition){screenshot("failure.png");std::cerr<<"FAIL "<<name<<'\n';std::exit(1);}
@@ -65,6 +75,9 @@ int main(int argc,char** argv){
     int wxargc=1;
     if(!wxEntryStart(wxargc,argv)){std::cerr<<"FAIL native GUI requires an accessible display; no checks executed\n";return 1;}
     if(!wxTheApp->CallOnInit())return 1;
+    // Run inside the real application main loop. GTK paints and idle callbacks
+    // must complete as well as command/model events before taking evidence.
+    wxTheApp->CallAfter([&]{
     wxUIActionSimulator simulator;input=&simulator;
     frame=new se::MainFrame;frame->Show();frame->Raise();pump(600);
     auto* canvas=frame->Canvas();auto* tree=dynamic_cast<wxTreeCtrl*>(frame->FindWindow(se::ID_LIBRARY_TREE));
@@ -112,6 +125,9 @@ int main(int argc,char** argv){
     check(canvas->SimulationTime()>paused+1&&canvas->SimulationValue(output)==1,"real wx timer advances running simulation");
     check(screenshot("native-live-simulation.png"),"capture real displayed live signal values");
     key(WXK_F5,wxMOD_SHIFT);check(!canvas->SimulationActive()&&!canvas->IsModified(),"native stop preserves saved design initial values");
-    frame->Destroy();pump();frame=nullptr;wxTheApp->OnExit();wxEntryCleanup();
+    frame->Destroy();pump();frame=nullptr;
     std::cout<<"PASS "<<checks<<" native GUI checks; placement/wiring/drag/undo/redo/save/reopen/live simulation\n";
+    wxTheApp->ExitMainLoop();
+    });
+    wxTheApp->OnRun();wxTheApp->OnExit();wxEntryCleanup();
 }
